@@ -1,3 +1,7 @@
+.ONESHELL:
+SHELL=/bin/zsh
+
+
 .PHONY: clean data lint requirements sync_data_to_s3 sync_data_from_s3
 
 #################################################################################
@@ -9,6 +13,8 @@ BUCKET = [OPTIONAL] your-bucket-for-syncing-data (do not include 's3://')
 PROFILE = default
 PROJECT_NAME = kaggle_petals_metal
 PYTHON_INTERPRETER = python3
+CONDA_ACTIVATE = source $$(conda info --base)/etc/profile.d/conda.sh ; conda activate ; conda activate
+
 
 ifeq (,$(shell which conda))
 HAS_CONDA=False
@@ -77,14 +83,12 @@ create_environment_scratch:
 
 
 export_environment:
+	$(CONDA_ACTIVATE) $(PROJECT_NAME)
 	conda env export --no-builds > $(PROJECT_NAME).yml
 	pip freeze > requirements.txt
 activate:
-	#conda init
-	#source ~/.bashrc
-	#echo `$(CONDA_ACTIVATE) $(PROJECT_NAME)`
-	$(CONDA_ACTIVATE) $(PROJECT_NAME)
 update_environment:
+	$(CONDA_ACTIVATE) $(PROJECT_NAME)
 	conda env update --file $(PROJECT_NAME).yml --prune
 	pip install -r requirements.txt
 
