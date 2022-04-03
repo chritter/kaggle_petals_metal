@@ -117,8 +117,6 @@ sphinxcontrib-htmlhelp==2.0.0
 sphinxcontrib-jsmath==1.0.1
 sphinxcontrib-qthelp==1.0.3
 sphinxcontrib-serializinghtml==1.1.5
-# Editable Git install with no remote (src==0.1.0)
--e /Users/christian/Documents/Career/DataScience/DS_Project_Mgmnt/cookiecutter-data-science/housepricesadv
 stack-data==0.2.0
 stevedore==3.5.0
 terminado==0.13.3
