@@ -25,7 +25,7 @@ def download_kaggle_data(output_path):
 
     competition_name = 'tpu-getting-started'
     api.competition_download_files(competition_name, output_path)
-    
+
     with ZipFile(f"{output_path}/{competition_name}.zip", 'r') as zip_file:
         # Extract all the contents of zip file in different directory
         zip_file.extractall(output_path)
