@@ -3,7 +3,6 @@
 import tempfile
 from unittest import TestCase
 from unittest import mock
-import zipfile
 import os
 from shutil import make_archive
 
