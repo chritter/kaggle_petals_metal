@@ -82,7 +82,7 @@ class TuneObjectives:
 
         history = model.fit(
             ds_train,
-            epochs=3,
+            epochs=40,
             validation_data=ds_valid,
             batch_size=batch_size,
             steps_per_epoch=steps_per_epoch_tr,
