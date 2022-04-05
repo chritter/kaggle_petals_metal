@@ -22,11 +22,11 @@ from optuna.visualization import (
     plot_param_importances,
     plot_intermediate_values,
 )
-from optuna.visualization import plot_edf
-
 import sys
 
 sys.path.append("../../")
+
+from optuna.visualization import plot_edf
 
 from kaggle_petals_metal.models.data_generator import DataGenerator
 from kaggle_petals_metal.models.train_model import get_model
@@ -89,7 +89,7 @@ class TuneObjectives:
             validation_steps=steps_per_epoch_val,
             callbacks=[callback_stopping],
             shuffle=True,
-            verbose=0,
+            verbose=2,
             workers=1,
             use_multiprocessing=False,
         )
@@ -121,7 +121,12 @@ class TuneObjectives:
 class Tuner:
     def __init__(self, save_path, study_name="initial_run") -> None:
 
-        study = optuna.create_study(
+        self.save_path = Path(save_path)
+        self.save_path.mkdir(parents=True, exist_ok=True)
+
+        sqlite_db = os.path.join(f"sqlite:///{save_path}", "example.db")
+        print(sqlite_db)
+        self.study = optuna.create_study(
             direction="maximize",
             # sampler = optuna.samplers.TPESampler,
             # pruner=optuna.pruners.MedianPruner(n_startup_trials=2),
@@ -129,11 +134,9 @@ class Tuner:
             #      reduction_factor=4, min_early_stopping_rate=0)
             pruner=optuna.pruners.HyperbandPruner(),
             study_name=study_name,
+            storage=sqlite_db,
+            load_if_exists=True,
         )
-
-        self.study = study
-        self.save_path = Path(save_path)
-        self.save_path.mkdir(parents=True, exist_ok=True)
 
     def save_trial_results(self, results, save_path):
         # if file does not exist write header
@@ -152,13 +155,18 @@ class Tuner:
 
     def tune(self, timeout):
 
+        print("Start Optimization.")
         self.study.optimize(
-            self.get_objective(), n_trials=1000000, timeout=timeout, gc_after_trial=True
+            self.get_objective(),
+            n_trials=1000000,
+            timeout=timeout,
+            gc_after_trial=True,
+            show_progress_bar=True,
         )  # timeout after 8hrs: 28800
 
-        self.show_result()
+        show_result(self.study)
 
-        self.show_best_vals()
+        show_best_vals(self.save_path)
 
         plot_optimization_history(self.study)
         plot_parallel_coordinate(self.study)
@@ -167,53 +175,54 @@ class Tuner:
         plot_intermediate_values(self.study)
         plot_edf(self.study)
 
-    def show_result(self):
 
-        pruned_trials = self.study.get_trials(
-            deepcopy=False, states=[TrialState.PRUNED]
-        )
-        complete_trials = self.study.get_trials(
-            deepcopy=False, states=[TrialState.COMPLETE]
-        )
+def show_result(study):
 
-        print("Study statistics: ")
-        print("  Number of finished trials: ", len(self.study.trials))
-        print("  Number of pruned trials: ", len(pruned_trials))
-        print("  Number of complete trials: ", len(complete_trials))
+    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-        print("Best trial:")
-        trial = self.study.best_trial
+    print("Study statistics: ")
+    print("  Number of finished trials: ", len(study.trials))
+    print("  Number of pruned trials: ", len(pruned_trials))
+    print("  Number of complete trials: ", len(complete_trials))
 
-        print("  Value: ", trial.value)
+    print("Best trial:")
+    trial = study.best_trial
 
-        print("  Params: ")
-        for key, value in trial.params.items():
-            print("    {}: {}".format(key, value))
+    print("  Value: ", trial.value)
 
-    def plot_stats_lines(self, results, var="loss", var_val="val_loss"):
-        fig = px.line(
-            data_frame=results.groupby("trial").mean().reset_index(),
-            x="trial",
-            y=var,
-            error_y=results.groupby("trial").std().reset_index()[var],
-        )
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print("    {}: {}".format(key, value))
 
-    def show_best_vals(self):
 
-        results_best_epochs = pd.read_csv(self.save_path / "best_vals.csv")
+def plot_stats_lines(results, var="loss", var_val="val_loss"):
+    fig = px.line(
+        data_frame=results.groupby("trial").mean().reset_index(),
+        x="trial",
+        y=var,
+        error_y=results.groupby("trial").std().reset_index()[var],
+    )
+    fig.show()
 
-        self.plot_stats_lines(results_best_epochs, var="loss", var_val="val_loss")
-        self.plot_stats_lines(
-            results_best_epochs, var="val_f1_score", var_val="val_f1_score"
-        )
-        self.plot_stats_lines(results_best_epochs, var="epochs", var_val=None)
+
+def show_best_vals(save_path):
+
+    save_path = Path(save_path)
+    results_best_epochs = pd.read_csv(save_path / "best_vals.csv")
+
+    plot_stats_lines(results_best_epochs, var="loss", var_val="val_loss")
+    plot_stats_lines(results_best_epochs, var="val_f1_score", var_val="val_f1_score")
+    plot_stats_lines(results_best_epochs, var="epochs", var_val=None)
 
 
 @click.command()
-@click.argument("timeout", type=int)
-@click.argument("study_name", type=str)
-@click.argument("save_path", type=click.Path())
-def main(save_path, study_name, timeout):
+@click.argument("timeout", type=int, default=60)
+@click.argument("study_name", type=str)  # , default='defaultstudy')
+@click.argument("save_path", type=click.Path())  # , default='models/tuning/')
+def main(timeout, study_name, save_path):
+
+    save_path = f"{save_path}/{study_name}"
 
     Tuner(save_path, study_name=study_name).tune(timeout)
 

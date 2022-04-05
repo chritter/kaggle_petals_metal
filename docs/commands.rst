@@ -3,8 +3,16 @@ Commands
 
 Commands to run code.
 
-Downlaod raw image files
+Downlaod raw image files into data directory
 
 .. code:: bash
 
-    python kaggle_petals_metal/data/download_dataset.py  data/raw
+    download_kaggle_datay  data/raw
+
+
+Tuning of model with optuna experiment [experiment] for [seconds] saving the run output to [dir]
+
+.. code:: bash
+
+    tune_hyperparameters [seconds] [experiment] [dir]
+    tune_hyperparameters 120 testfast2 models/tuning/

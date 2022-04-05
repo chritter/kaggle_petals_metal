@@ -32,7 +32,11 @@ def _download_kaggle_data(output_path):
 
 
 @click.command()
-@click.argument("output_path", type=click.Path())
+@click.argument(
+    "output_path",
+    type=click.Path(),
+    help="path to dowload raw data. choose dir in data/raw directory.",
+)
 def download_kaggle_data(output_path):
 
     """
