@@ -33,12 +33,14 @@ print(tfa.__version__)
 
 
 def get_effnet2_model(
-    hyperparams={"lr": 0.001, "dropout": 0.2}, options={"size": "small"}, image_size=224
+    hyperparams={"lr": 0.001, "dropout": 0.2, "size": "small"}, image_size=224
 ):
 
-    if options["size"] == "large":
+    print(f"hyperparams: {hyperparams}")
+
+    if hyperparams["size"] == "large":
         effnet2_base = "https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet21k_l/feature_vector/2"
-    elif options["size"] == "medium":
+    elif hyperparams["size"] == "medium":
         effnet2_base = "https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet21k_m/feature_vector/2"
     else:
         effnet2_base = "https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet21k_s/feature_vector/2"
@@ -77,13 +79,13 @@ def get_effnet2_model(
 
 
 def get_model(
-    model_type="effnet2", image_size=224, hyperparams={"lr": 0.001, "dropout": 0.2}
+    model_type="effnet2",
+    image_size=224,
+    hyperparams={"lr": 0.001, "dropout": 0.2, "size": "small"},
 ):
 
     if model_type == "effnet2":
-        return get_effnet2_model(
-            hyperparams=hyperparams, options={"size": "small"}, image_size=image_size
-        )
+        return get_effnet2_model(hyperparams=hyperparams, image_size=image_size)
 
 
 def train():
@@ -109,7 +111,7 @@ def train():
 
     model = get_model(
         model_type="effnet2",
-        hyperparams={"lr": 0.001, "dropout": 0.2},
+        hyperparams={"lr": 0.001, "dropout": 0.2, size: "small"},
         image_size=image_size,
     )
 

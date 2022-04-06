@@ -43,8 +43,9 @@ class TuneObjectives:
     def objective_effnet2(self, trial, batch_size, image_size):
 
         # hyperparams
-        lr = trial.suggest_float("l1reg", 1e-6, 1e-3, log=True)
+        lr = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
         dropout = trial.suggest_float("dropout", 0.0, 0.8)
+        size = trial.suggest_categorical("size", ["small", "medium", "large"])
 
         # Clear clutter from previous TensorFlow graphs.
         tf.keras.backend.clear_session()
@@ -58,7 +59,7 @@ class TuneObjectives:
 
         model = get_model(
             model_type="effnet2",
-            hyperparams={"lr": lr, "dropout": dropout},
+            hyperparams={"lr": lr, "dropout": dropout, "size": "small"},
             image_size=image_size,
         )
 
@@ -82,7 +83,7 @@ class TuneObjectives:
 
         history = model.fit(
             ds_train,
-            epochs=40,
+            epochs=15,
             validation_data=ds_valid,
             batch_size=batch_size,
             steps_per_epoch=steps_per_epoch_tr,
