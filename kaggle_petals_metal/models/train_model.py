@@ -33,7 +33,8 @@ print(tfa.__version__)
 
 
 def get_effnet2_model(
-    hyperparams={"lr": 0.001, "dropout": 0.2, "size": "small"}, image_size=224
+    hyperparams={"lr": 0.001, "dropout": 0.2, "size": "small", "label_smoothing": 0.0},
+    image_size=224,
 ):
 
     print(f"hyperparams: {hyperparams}")
@@ -64,9 +65,13 @@ def get_effnet2_model(
         )
     )  # This is to be used for subclassed models, which do not know at instantiation time what their inputs look like.
 
+    loss = tf.keras.losses.CategoricalCrossentropy(
+        from_logits=False, label_smoothing=hyperparams["label_smoothing"]
+    )
+
     effnet2_tfhub.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=hyperparams["lr"]),
-        loss="categorical_crossentropy",
+        loss=loss,
         metrics=[
             tfa.metrics.F1Score(num_classes=104, average="macro"),
             tf.keras.metrics.CategoricalAccuracy(
@@ -81,7 +86,7 @@ def get_effnet2_model(
 def get_model(
     model_type="effnet2",
     image_size=224,
-    hyperparams={"lr": 0.001, "dropout": 0.2, "size": "small"},
+    hyperparams={"lr": 0.001, "dropout": 0.2, "size": "small", "label_smoothing": 0.0},
 ):
 
     if model_type == "effnet2":
@@ -111,7 +116,7 @@ def train():
 
     model = get_model(
         model_type="effnet2",
-        hyperparams={"lr": 0.001, "dropout": 0.2, size: "small"},
+        hyperparams={"lr": 0.001, "dropout": 0.2, "size": "small"},
         image_size=image_size,
     )
 

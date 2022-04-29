@@ -3,7 +3,7 @@ Commands
 
 Commands to run code.
 
-Downlaod raw image files into data directory
+Download raw image files into data directory
 
 .. code:: bash
 

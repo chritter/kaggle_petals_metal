@@ -22,7 +22,11 @@ from optuna.visualization import (
     plot_param_importances,
     plot_intermediate_values,
 )
+from optuna.integration import TFKerasPruningCallback
+
 import sys
+from sklearn.utils import class_weight
+
 
 sys.path.append("../../")
 
@@ -43,9 +47,13 @@ class TuneObjectives:
     def objective_effnet2(self, trial, batch_size, image_size):
 
         # hyperparams
-        lr = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
-        dropout = trial.suggest_float("dropout", 0.0, 0.8)
-        size = trial.suggest_categorical("size", ["small", "medium", "large"])
+        # lr = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
+        lr = 3e-4
+        # dropout = trial.suggest_float("dropout", 0.0, 0.8)
+        dropout = 0.65
+        # size = trial.suggest_categorical("size", ["small"]) #, "medium", "large"])
+        size = "small"
+        label_smoothing = trial.suggest_float("label_smoothing", 0.0, 0.5)
 
         # Clear clutter from previous TensorFlow graphs.
         tf.keras.backend.clear_session()
@@ -59,12 +67,18 @@ class TuneObjectives:
 
         model = get_model(
             model_type="effnet2",
-            hyperparams={"lr": lr, "dropout": dropout, "size": "small"},
+            hyperparams={
+                "lr": lr,
+                "dropout": dropout,
+                "size": size,
+                "label_smoothing": label_smoothing,
+            },
             image_size=image_size,
         )
 
+        monitor = "val_f1_score"
         callback_stopping = tf.keras.callbacks.EarlyStopping(
-            monitor="val_f1_score",
+            monitor=monitor,
             min_delta=0,
             patience=5,
             verbose=1,
@@ -76,10 +90,16 @@ class TuneObjectives:
         #                                                      save_weights_only=True,
         #                                                                    monitor='val_f1_score',
         #                                                      verbose=1,  mode='max', save_best_only=True)
+        # callback_trial_pruning = TFKerasPruningCallback(trial, monitor)
 
         compute_steps_per_epoch = lambda x: int(math.ceil(1.0 * x / batch_size))
         steps_per_epoch_tr = compute_steps_per_epoch(12753)
         steps_per_epoch_val = compute_steps_per_epoch(3712)
+
+        # add precomputed weights
+        # class_weights = class_weight.compute_class_weight('balanced',
+        #                                         np.unique(y_train),
+        #                                         y_train)
 
         history = model.fit(
             ds_train,
@@ -88,7 +108,7 @@ class TuneObjectives:
             batch_size=batch_size,
             steps_per_epoch=steps_per_epoch_tr,
             validation_steps=steps_per_epoch_val,
-            callbacks=[callback_stopping],
+            callbacks=[callback_stopping],  # , callback_trial_pruning],
             shuffle=True,
             verbose=2,
             workers=1,
@@ -129,7 +149,8 @@ class Tuner:
         print(sqlite_db)
         self.study = optuna.create_study(
             direction="maximize",
-            # sampler = optuna.samplers.TPESampler,
+            sampler=optuna.samplers.TPESampler(seed=42),
+            # sampler = optuna.samplers.RandomSampler(seed=42),
             # pruner=optuna.pruners.MedianPruner(n_startup_trials=2),
             # optuna.pruners.SuccessiveHalvingPruner(min_resource='auto',
             #      reduction_factor=4, min_early_stopping_rate=0)
