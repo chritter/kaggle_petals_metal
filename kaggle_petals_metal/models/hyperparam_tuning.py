@@ -26,6 +26,8 @@ from optuna.integration import TFKerasPruningCallback
 
 import sys
 from sklearn.utils import class_weight
+import mlflow
+from optuna.integration import MLflowCallback
 
 
 sys.path.append("../../")
@@ -40,11 +42,16 @@ from kaggle_petals_metal.data.get_class_names import get_class_names
 CLASSES = get_class_names()
 
 
+callback_mlflow = MLflowCallback(
+    tracking_uri="http://localhost:5005", metric_name="val_f1_score"
+)
+
+
 class TuneObjectives:
     def __init__(self, save_trial_results) -> None:
         self.save_trial_results = save_trial_results
 
-    def objective_effnet2(self, trial, batch_size, image_size):
+    def _suggest_hyperparams(self, trial):
 
         # hyperparams
         # lr = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
@@ -54,6 +61,19 @@ class TuneObjectives:
         # size = trial.suggest_categorical("size", ["small"]) #, "medium", "large"])
         size = "small"
         label_smoothing = trial.suggest_float("label_smoothing", 0.0, 0.5)
+
+        return lr, dropout, size, label_smoothing
+
+    def objective_effnet2(self, trial, batch_size, image_size):
+
+        lr, dropout, size, label_smoothing = self._suggest_hyperparams(trial)
+
+        mlflow.log_param("trial", trial.number)
+        mlflow.log_param("model_type", "effnet2")
+        mlflow.log_param("lr", lr)
+        mlflow.log_param("dropout", dropout)
+        mlflow.log_param("size", size)
+        mlflow.log_param("label_smoothing", label_smoothing)
 
         # Clear clutter from previous TensorFlow graphs.
         tf.keras.backend.clear_session()
@@ -86,6 +106,7 @@ class TuneObjectives:
             baseline=None,
             restore_best_weights=False,
         )
+
         #     callback_model_checkpoint = tf.keras.callbacks.ModelCheckpoint(filepath="training/cp-{epoch:04d}.ckpt",
         #                                                      save_weights_only=True,
         #                                                                    monitor='val_f1_score',
@@ -103,7 +124,7 @@ class TuneObjectives:
 
         history = model.fit(
             ds_train,
-            epochs=15,
+            epochs=1,
             validation_data=ds_valid,
             batch_size=batch_size,
             steps_per_epoch=steps_per_epoch_tr,
@@ -179,11 +200,13 @@ class Tuner:
 
         print("Start Optimization.")
         self.study.optimize(
-            self.get_objective(),
+            callback_mlflow.track_in_mlflow()(self.get_objective()),
+            # self.get_objective(),
             n_trials=1000000,
             timeout=timeout,
             gc_after_trial=True,
             show_progress_bar=True,
+            callbacks=[callback_mlflow],
         )  # timeout after 8hrs: 28800
 
         show_result(self.study)
