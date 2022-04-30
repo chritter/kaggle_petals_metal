@@ -28,7 +28,7 @@ import sys
 from sklearn.utils import class_weight
 import mlflow
 from optuna.integration import MLflowCallback
-
+from git import Repo
 
 sys.path.append("../../")
 
@@ -45,6 +45,7 @@ CLASSES = get_class_names()
 callback_mlflow = MLflowCallback(
     tracking_uri="http://localhost:5005", metric_name="val_f1_score"
 )
+repo = Repo(os.getcwd(), search_parent_directories=True)
 
 
 class TuneObjectives:
@@ -74,6 +75,8 @@ class TuneObjectives:
         mlflow.log_param("dropout", dropout)
         mlflow.log_param("size", size)
         mlflow.log_param("label_smoothing", label_smoothing)
+        mlflow.set_tag("commit", repo.head.reference.commit.hexsha)
+        mlflow.set_tag("branch", repo.active_branch.name)
 
         # Clear clutter from previous TensorFlow graphs.
         tf.keras.backend.clear_session()
@@ -124,7 +127,7 @@ class TuneObjectives:
 
         history = model.fit(
             ds_train,
-            epochs=1,
+            epochs=15,
             validation_data=ds_valid,
             batch_size=batch_size,
             steps_per_epoch=steps_per_epoch_tr,
