@@ -18,9 +18,11 @@ start mlflow server for experiment tracking:
     ./start_server.sh
 
 
-Tuning of model with optuna experiment [experiment] for [seconds] saving the run output to [dir]
+Tuning of model with optuna experiment [experiment] for [seconds] saving the run output to
+mlfow and (temporary) optuna study object to models/tuning. The latter allows to
+continue the optuna run any time.
 
 .. code:: bash
 
-    # tune_hyperparameters [seconds] [experiment] [dir]
-    tune_hyperparameters 120 testfast2 models/tuning/
+    # tune_hyperparameters [seconds] [experiment]
+    tune_hyperparameters 120 testfast2
