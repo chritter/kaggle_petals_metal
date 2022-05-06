@@ -27,6 +27,7 @@ from optuna.integration import TFKerasPruningCallback
 import sys
 from sklearn.utils import class_weight
 import mlflow
+from mlflow.tracking import MlflowClient
 from optuna.integration import MLflowCallback
 from git import Repo
 
@@ -49,8 +50,8 @@ repo = Repo(os.getcwd(), search_parent_directories=True)
 
 
 class TuneObjectives:
-    def __init__(self, save_trial_results) -> None:
-        self.save_trial_results = save_trial_results
+    def __init__(self) -> None:
+        pass
 
     def _suggest_hyperparams(self, trial):
 
@@ -63,20 +64,29 @@ class TuneObjectives:
         size = "small"
         label_smoothing = trial.suggest_float("label_smoothing", 0.0, 0.5)
 
-        return lr, dropout, size, label_smoothing
+        hyperparams = {
+            "lr": lr,
+            "dropout": dropout,
+            "size": size,
+            "label_smoothing": label_smoothing,
+        }
+
+        return hyperparams
+
+    def mlflow_defaults(self, trial):
+
+        mlflow.log_param("trial", trial.number)
+        mlflow.set_tag("commit", repo.head.reference.commit.hexsha)
+        mlflow.set_tag("branch", repo.active_branch.name)
 
     def objective_effnet2(self, trial, batch_size, image_size):
 
-        lr, dropout, size, label_smoothing = self._suggest_hyperparams(trial)
+        hyperparams = self._suggest_hyperparams(trial)
 
-        mlflow.log_param("trial", trial.number)
-        mlflow.log_param("model_type", "effnet2")
-        mlflow.log_param("lr", lr)
-        mlflow.log_param("dropout", dropout)
-        mlflow.log_param("size", size)
-        mlflow.log_param("label_smoothing", label_smoothing)
-        mlflow.set_tag("commit", repo.head.reference.commit.hexsha)
-        mlflow.set_tag("branch", repo.active_branch.name)
+        self.mlflow_defaults(trial)
+        # log hyperparams
+        hyperparams["model_type"] = "effnet2"
+        mlflow.log_params(hyperparams)
 
         # Clear clutter from previous TensorFlow graphs.
         tf.keras.backend.clear_session()
@@ -90,12 +100,7 @@ class TuneObjectives:
 
         model = get_model(
             model_type="effnet2",
-            hyperparams={
-                "lr": lr,
-                "dropout": dropout,
-                "size": size,
-                "label_smoothing": label_smoothing,
-            },
+            hyperparams=hyperparams,
             image_size=image_size,
         )
 
@@ -127,7 +132,7 @@ class TuneObjectives:
 
         history = model.fit(
             ds_train,
-            epochs=15,
+            epochs=1,
             validation_data=ds_valid,
             batch_size=batch_size,
             steps_per_epoch=steps_per_epoch_tr,
@@ -146,7 +151,7 @@ class TuneObjectives:
         results["trial"] = trial.number  # get trial number
 
         best_epoch_vals = results[results["val_f1_score"] == best_f1]
-        self.save_trial_results(best_epoch_vals)
+        self.mlflow_trial_results(best_epoch_vals)
 
         gc.collect()
         del model, ds_train, ds_valid, ds_test
@@ -162,15 +167,21 @@ class TuneObjectives:
         else:
             raise ValueError("Unknown objective type: {}".format(type))
 
+    def mlflow_trial_results(self, best_epoch_vals):
+
+        metrics = best_epoch_vals.T.to_dict()[0]
+        mlflow.log_metrics(metrics)
+
 
 class Tuner:
-    def __init__(self, save_path, study_name="initial_run") -> None:
+    def __init__(self, study_name="initial_run") -> None:
 
-        self.save_path = Path(save_path)
-        self.save_path.mkdir(parents=True, exist_ok=True)
+        save_path = Path("models/tuning/{}".format(study_name))
+        save_path.mkdir(parents=True, exist_ok=True)
 
         sqlite_db = os.path.join(f"sqlite:///{save_path}", "example.db")
         print(sqlite_db)
+        print(f"sqlite_db {sqlite_db}")
         self.study = optuna.create_study(
             direction="maximize",
             sampler=optuna.samplers.TPESampler(seed=42),
@@ -184,20 +195,11 @@ class Tuner:
             load_if_exists=True,
         )
 
-    def save_trial_results(self, results, save_path):
-        # if file does not exist write header
-        if not os.path.isfile(save_path / "best_vals.csv"):
-            results.to_csv(save_path / "best_vals.csv")
-        else:
-            results.to_csv(save_path / "best_vals.csv", mode="a", header=False)
-
     def get_objective(self):
 
-        return TuneObjectives(
-            save_trial_results=partial(
-                self.save_trial_results, save_path=self.save_path
-            )
-        ).get_objective(type="effnet2", batch_size=32, image_size=224)
+        return TuneObjectives().get_objective(
+            type="effnet2", batch_size=32, image_size=224
+        )
 
     def tune(self, timeout):
 
@@ -214,20 +216,33 @@ class Tuner:
 
         show_result(self.study)
 
-        show_best_vals(self.save_path)
+        # plot_optimization_history(self.study)
+        # plot_parallel_coordinate(self.study)
 
-        plot_optimization_history(self.study)
-        plot_parallel_coordinate(self.study)
-
-        plot_param_importances(self.study)
-        plot_intermediate_values(self.study)
-        plot_edf(self.study)
+        # plot_param_importances(self.study)
+        # plot_intermediate_values(self.study)
+        # plot_edf(self.study)
 
 
 def show_result(study):
 
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+
+    study_name = study.study_name
+    mlflow.set_tracking_uri("http://localhost:5005")
+    client = MlflowClient()
+    exp = mlflow.get_experiment_by_name(study_name)
+    client.set_experiment_tag(exp.experiment_id, "test", "test2")
+    client.set_experiment_tag(
+        exp.experiment_id, "Number of finished trials", len(study.trials)
+    )
+    client.set_experiment_tag(
+        exp.experiment_id, "Number of pruned trials", len(pruned_trials)
+    )
+    client.set_experiment_tag(
+        exp.experiment_id, "Number of complete trials", len(complete_trials)
+    )
 
     print("Study statistics: ")
     print("  Number of finished trials: ", len(study.trials))
@@ -242,6 +257,8 @@ def show_result(study):
     print("  Params: ")
     for key, value in trial.params.items():
         print("    {}: {}".format(key, value))
+
+    client.set_experiment_tag
 
 
 def plot_stats_lines(results, var="loss", var_val="val_loss"):
@@ -267,12 +284,9 @@ def show_best_vals(save_path):
 @click.command()
 @click.argument("timeout", type=int, default=60)
 @click.argument("study_name", type=str)  # , default='defaultstudy')
-@click.argument("save_path", type=click.Path())  # , default='models/tuning/')
-def main(timeout, study_name, save_path):
+def main(timeout, study_name):
 
-    save_path = f"{save_path}/{study_name}"
-
-    Tuner(save_path, study_name=study_name).tune(timeout)
+    Tuner(study_name=study_name).tune(timeout)
 
 
 if __name__ == "__main__":
