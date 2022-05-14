@@ -31,5 +31,5 @@ repos:
     hooks:
     -   id: isort
         name: isort (python)
-        entry: isort kaggle_petals_metal
+        args: ["--profile", "black", --line-length=72]
 default_stages: [commit, push]

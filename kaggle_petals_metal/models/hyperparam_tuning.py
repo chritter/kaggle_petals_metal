@@ -1,43 +1,42 @@
+import gc
+import json
+import logging
+import math
+import os
+import sys
+from functools import partial
+from pathlib import Path
+
+import click
+import mlflow
 import optuna
+import pandas as pd
+import plotly_express as px
+import tensorflow as tf
+import yaml
+from git import Repo
+from mlflow.tracking import MlflowClient
+from optuna.integration import MLflowCallback, TFKerasPruningCallback
+from optuna.samplers import TPESampler  # Tree Parzen Estimator (TPE)
+from optuna.samplers import RandomSampler
 
 # from optuna.integration import TFKerasPruningCallback
 from optuna.trial import TrialState
-
-from optuna.samplers import RandomSampler
-from optuna.samplers import TPESampler  # Tree Parzen Estimator (TPE)
-from optuna.integration import TFKerasPruningCallback
-import os
-import math
-import gc
-import logging
-from pathlib import Path
-from functools import partial
-import tensorflow as tf
-import pandas as pd
-import click
-import plotly_express as px
 from optuna.visualization import (
+    plot_edf,
+    plot_intermediate_values,
     plot_optimization_history,
     plot_parallel_coordinate,
     plot_param_importances,
-    plot_intermediate_values,
 )
-from optuna.integration import TFKerasPruningCallback
-
-import sys
 from sklearn.utils import class_weight
-import mlflow
-from mlflow.tracking import MlflowClient
-from optuna.integration import MLflowCallback
-from git import Repo
 
-sys.path.append("../../")
-
-from optuna.visualization import plot_edf
-
+from kaggle_petals_metal.data.get_class_names import get_class_names
+from kaggle_petals_metal.models.config import read_config
 from kaggle_petals_metal.models.data_generator import DataGenerator
 from kaggle_petals_metal.models.train_model import get_model
-from kaggle_petals_metal.data.get_class_names import get_class_names
+
+# sys.path.append("../../")
 
 
 CLASSES = get_class_names()
@@ -56,13 +55,36 @@ class TuneObjectives:
     def _suggest_hyperparams(self, trial):
 
         # hyperparams
-        # lr = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
-        lr = 3e-4
+        if isinstance(self.config["lr"], list):
+            lr = trial.suggest_float(
+                "lr", self.config["lr"][0], self.config["lr"][1], log=True
+            )
+        else:
+            lr = self.config["lr"]
+
+        if isinstance(self.config["dropout"], list):
+            dropout = trial.suggest_float(
+                "dropout", self.config["dropout"][0], self.config["dropout"][1]
+            )
+        else:
+            dropout = self.config["dropout"]
+
         # dropout = trial.suggest_float("dropout", 0.0, 0.8)
-        dropout = 0.65
+        # dropout = 0.65
         # size = trial.suggest_categorical("size", ["small"]) #, "medium", "large"])
-        size = "small"
-        label_smoothing = trial.suggest_float("label_smoothing", 0.0, 0.5)
+
+        size = self.config["size"]
+
+        # size = "small"
+
+        if isinstance(self.config["label_smoothing"], list):
+            label_smoothing = trial.suggest_float(
+                "label_smoothing",
+                self.config["label_smoothing"][0],
+                self.config["label_smoothing"][1],
+            )
+        else:
+            label_smoothing = self.config["label_smoothing"]
 
         hyperparams = {
             "lr": lr,
@@ -79,13 +101,15 @@ class TuneObjectives:
         mlflow.set_tag("commit", repo.head.reference.commit.hexsha)
         mlflow.set_tag("branch", repo.active_branch.name)
 
-    def objective_effnet2(self, trial, batch_size, image_size):
+    def objective(self, trial, batch_size, image_size, config):
+
+        self.config = config
 
         hyperparams = self._suggest_hyperparams(trial)
 
         self.mlflow_defaults(trial)
         # log hyperparams
-        hyperparams["model_type"] = "effnet2"
+        hyperparams["model_type"] = config["model_arch"]
         mlflow.log_params(hyperparams)
 
         # Clear clutter from previous TensorFlow graphs.
@@ -99,7 +123,7 @@ class TuneObjectives:
         ).get_datasets()
 
         model = get_model(
-            model_type="effnet2",
+            model_arch=config["model_arch"],
             hyperparams=hyperparams,
             image_size=image_size,
         )
@@ -159,13 +183,17 @@ class TuneObjectives:
 
         return best_f1
 
-    def get_objective(self, type="effnet2", batch_size=32, image_size=224):
-        if type == "effnet2":
-            return partial(
-                self.objective_effnet2, batch_size=batch_size, image_size=image_size
-            )
-        else:
-            raise ValueError("Unknown objective type: {}".format(type))
+    def get_objective(self, config, batch_size=32, image_size=224):
+        # if config['arch_type'] == "effnet2":
+        #     objective = self.objective_effnet2
+        # elif config['arch_type'] == "effnet":
+        #     objective = self.objective_effnet2
+        # else:
+        #     raise ValueError("Unknown objective type: {}".format(type))
+
+        return partial(
+            self.objective, batch_size=batch_size, image_size=image_size, config=config
+        )
 
     def mlflow_trial_results(self, best_epoch_vals):
 
@@ -174,7 +202,7 @@ class TuneObjectives:
 
 
 class Tuner:
-    def __init__(self, study_name="initial_run") -> None:
+    def __init__(self, study_name, config) -> None:
 
         save_path = Path("models/tuning/{}".format(study_name))
         save_path.mkdir(parents=True, exist_ok=True)
@@ -195,10 +223,12 @@ class Tuner:
             load_if_exists=True,
         )
 
+        self.config = config
+
     def get_objective(self):
 
         return TuneObjectives().get_objective(
-            type="effnet2", batch_size=32, image_size=224
+            config=self.config, batch_size=32, image_size=224
         )
 
     def tune(self, timeout):
@@ -286,7 +316,10 @@ def show_best_vals(save_path):
 @click.argument("study_name", type=str)  # , default='defaultstudy')
 def main(timeout, study_name):
 
-    Tuner(study_name=study_name).tune(timeout)
+    config = read_config()
+    print(config)
+
+    Tuner(study_name=study_name, config=config).tune(timeout)
 
 
 if __name__ == "__main__":

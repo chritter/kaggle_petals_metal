@@ -1,7 +1,18 @@
-import math
 import logging
-import tensorflow as tf
+import math
+import sys
+
 import click
+import tensorflow as tf
+
+from kaggle_petals_metal.models.data_generator import DataGenerator
+from kaggle_petals_metal.models.model_archs import (
+    get_effnet2_model,
+    get_vits_16_model,
+)
+
+# sys.path.append("../../")
+
 
 gpus = tf.config.experimental.list_physical_devices("GPU")
 if gpus:
@@ -15,82 +26,18 @@ if gpus:
         # Memory growth must be set before GPUs have been initialized
         print(e)
 
-import tensorflow_addons as tfa
-
-
-import sys
-
-sys.path.append("../../")
-
-
-from kaggle_petals_metal.models.data_generator import DataGenerator
-import tensorflow_hub as hub
-
-# import plotly_express as px
-
-print(tf.__version__)
-print(tfa.__version__)
-
-
-def get_effnet2_model(
-    hyperparams={"lr": 0.001, "dropout": 0.2, "size": "small", "label_smoothing": 0.0},
-    image_size=224,
-):
-
-    print(f"hyperparams: {hyperparams}")
-
-    if hyperparams["size"] == "large":
-        effnet2_base = "https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet21k_l/feature_vector/2"
-    elif hyperparams["size"] == "medium":
-        effnet2_base = "https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet21k_m/feature_vector/2"
-    else:
-        effnet2_base = "https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet21k_s/feature_vector/2"
-
-    effnet2_tfhub = tf.keras.Sequential(
-        [
-            # Explicitly define the input shape so the model can be properly
-            # loaded by the TFLiteConverter
-            tf.keras.layers.InputLayer(input_shape=(image_size, image_size, 3)),
-            hub.KerasLayer(effnet2_base, trainable=False),
-            tf.keras.layers.Dropout(rate=hyperparams["dropout"]),
-            tf.keras.layers.Dense(104, activation="softmax"),
-        ]
-    )
-    effnet2_tfhub.build(
-        (
-            None,
-            image_size,
-            image_size,
-            3,
-        )
-    )  # This is to be used for subclassed models, which do not know at instantiation time what their inputs look like.
-
-    loss = tf.keras.losses.CategoricalCrossentropy(
-        from_logits=False, label_smoothing=hyperparams["label_smoothing"]
-    )
-
-    effnet2_tfhub.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=hyperparams["lr"]),
-        loss=loss,
-        metrics=[
-            tfa.metrics.F1Score(num_classes=104, average="macro"),
-            tf.keras.metrics.CategoricalAccuracy(
-                name="categorical_accuracy", dtype=None
-            ),
-        ],
-    )
-
-    return effnet2_tfhub
-
 
 def get_model(
-    model_type="effnet2",
+    model_arch="effnet2",
     image_size=224,
     hyperparams={"lr": 0.001, "dropout": 0.2, "size": "small", "label_smoothing": 0.0},
 ):
 
-    if model_type == "effnet2":
+    if model_arch == "effnet2":
         return get_effnet2_model(hyperparams=hyperparams, image_size=image_size)
+    elif model_arch == "vits_16":
+        raise NotImplementedError("Vits 16 model does not work on Mac M1")
+        # return get_vits_16_model(hyperparams=hyperparams, image_size=image_size)
 
 
 def train():
